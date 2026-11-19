@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import csv
 import json
+import platform
+import shutil
 import statistics
 import sys
 from pathlib import Path
@@ -70,6 +72,15 @@ def main() -> None:
             writer = csv.DictWriter(file, fieldnames=list(rows[0]))
             writer.writeheader()
             writer.writerows(rows)
+    environment = {
+        "platform": platform.platform(), "python": sys.version,
+        "compiler": run([shutil.which("g++"), "--version"]).splitlines()[0],
+        "flags": "-O2 -std=c++17 -Wall -Wextra", "repetitions": REPETITIONS,
+        "warmup": WARMUP, "sizes": [item["n"] for item in manifest["instances"]],
+        "free_rows": 6, "input_manifest": "data/memory_inputs/manifest.json",
+    }
+    (RESULTS / "geometric_environment.json").write_text(
+        json.dumps(environment, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"Salvas {len(raw)} medicoes de tempo em escala geometrica")
 
 

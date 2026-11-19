@@ -9,8 +9,8 @@
       "status": "completed",
       "solutions": 724,
       "leaves": 3628800,
-      "algorithm_seconds": 29.4344669,
-      "wall_seconds": 29.680583499954082
+      "algorithm_seconds": 8.9308472,
+      "wall_seconds": 9.014165000000503
     },
     {
       "n": 11,

@@ -25,6 +25,35 @@ def run(command: list[str]) -> str:
     return completed.stdout
 
 
+def hardware_details() -> dict[str, object]:
+    """Registra CPU e RAM fisica sem dependencias externas."""
+    details: dict[str, object] = {"cpu_name": platform.processor(), "ram_bytes": None}
+    if os.name == "nt":
+        import ctypes
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                           r"HARDWARE\DESCRIPTION\System\CentralProcessor\0") as key:
+            details["cpu_name"] = str(winreg.QueryValueEx(key, "ProcessorNameString")[0]).strip()
+
+        class MemoryStatus(ctypes.Structure):
+            _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong)] + [
+                (name, ctypes.c_ulonglong) for name in (
+                    "ullTotalPhys", "ullAvailPhys", "ullTotalPageFile", "ullAvailPageFile",
+                    "ullTotalVirtual", "ullAvailVirtual", "ullAvailExtendedVirtual")]
+
+        status = MemoryStatus()
+        status.dwLength = ctypes.sizeof(MemoryStatus)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+            details["ram_bytes"] = int(status.ullTotalPhys)
+    elif hasattr(os, "sysconf"):
+        try:
+            details["ram_bytes"] = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+        except (OSError, ValueError):
+            pass
+    return details
+
+
 def compile_cpp() -> Path:
     compiler = shutil.which("g++")
     if compiler is None:
@@ -106,6 +135,7 @@ def main() -> None:
            "python": sys.version, "compiler": run([shutil.which("g++"), "--version"]).splitlines()[0],
            "flags": "-O2 -std=c++17 -Wall -Wextra", "seed": manifest["seed"],
            "repetitions": args.repetitions, "warmup": args.warmup}
+    env.update(hardware_details())
     (RAW.parent / "environment.json").write_text(json.dumps(env, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"Salvos {len(rows)} tempos em {RAW}")
 

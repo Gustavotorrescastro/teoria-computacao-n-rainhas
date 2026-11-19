@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+from datetime import datetime
 import json
 import math
 from pathlib import Path
@@ -21,9 +22,10 @@ from reportlab.platypus import BaseDocTemplate, Frame, Image, KeepTogether, Page
 from reportlab.pdfgen import canvas
 
 ROOT = Path(__file__).resolve().parents[1]
-FIG = ROOT / "output" / "figures"
-PDF = ROOT / "output" / "pdf"
-PRES = ROOT / "output" / "presentation"
+GENERATED = ROOT / "build" / "generated"
+FIG = GENERATED / "figures"
+PDF = GENERATED / "pdf"
+PRES = GENERATED / "presentation"
 SUMMARY = list(csv.DictReader((ROOT / "data" / "results" / "summary.csv").open(encoding="utf-8")))
 DATA = {(r["instance"], r["language"], r["algorithm"]): r for r in SUMMARY}
 MEMORY_SUMMARY = list(csv.DictReader((ROOT / "data" / "results" / "memory_summary.csv").open(encoding="utf-8")))
@@ -31,6 +33,8 @@ MEMORY = {(r["n"], r["language"], r["algorithm"]): r for r in MEMORY_SUMMARY}
 GEOMETRIC_SUMMARY = list(csv.DictReader((ROOT / "data" / "results" / "geometric_summary.csv").open(encoding="utf-8")))
 GEOMETRIC = {(r["n"], r["language"], r["algorithm"]): r for r in GEOMETRIC_SUMMARY}
 LIMIT = json.loads((ROOT / "data" / "results" / "limit_60s.json").read_text(encoding="utf-8"))
+ENVIRONMENT = json.loads((ROOT / "data" / "results" / "environment.json").read_text(encoding="utf-8"))
+GEOMETRIC_ENVIRONMENT = json.loads((ROOT / "data" / "results" / "geometric_environment.json").read_text(encoding="utf-8"))
 SIZES = (4, 5, 6, 7, 8, 9)
 MEMORY_SIZES = (6, 12, 24, 48, 96, 192)
 PAPER_URL = "https://jair.org/index.php/jair/article/view/11079"
@@ -39,6 +43,10 @@ REPO_URL = "https://github.com/Gustavotorrescastro/teoria-computacao-n-rainhas"
 
 def number(value: float, digits: int = 2) -> str:
     return f"{value:.{digits}f}".replace(".", ",")
+
+
+def mean_sd(item: dict[str, str], digits: int = 3) -> str:
+    return number(float(item["mean_ms"]), digits) + " ± " + number(float(item["sd_ms"]), digits)
 
 
 def ms(instance: str, language: str, algorithm: str) -> float:
@@ -225,7 +233,7 @@ def make_report() -> None:
     doc.addPageTemplates(PageTemplate(id="report", frames=frame, onPage=footer))
     story: list = []
     story += [p("N-rainhas: força bruta e backtracking em Python e C++", "TitleCustom"),
-              p("<b>Disciplina:</b> Teoria da Computação | <b>Professor:</b> Daniel Bezerra | <b>Data:</b> 16/11/2026"),
+              p("<b>Disciplina:</b> Teoria da Computação | <b>Professor:</b> Daniel Bezerra | <b>Revisão:</b> " + datetime.now().strftime("%d/%m/%Y")),
               p("<b>Equipe:</b> Bruno Augusto da Rocha Leite Filho; Gustavo Torres Castro; Diego Ferreira Magnata; Pablo Coelho Gonçalves de Alcântara Rosendo."),
               p("<b>Resumo.</b> Implementamos quatro programas para contar todas as soluções de N-rainhas, usando o mesmo conjunto de entradas em Python e C++. Em tabuleiro vazio de n=9, a força bruta levou "
                 + number(ms("empty_n9", "Python", "brute")) + " ms em Python e " + number(ms("empty_n9", "C++", "brute"))
@@ -242,23 +250,23 @@ def make_report() -> None:
               heading("2. Classificação assintótica"),
               p("Na força bruta, cada uma das m! permutações custa Θ(n) para verificar diagonais. A geração também é limitada por O(m! m); como m≤n, o custo total em instâncias válidas é <b>Θ(n·m!)</b>, além da leitura/validação Θ(n). Para o tabuleiro vazio, m=n: <b>O(n·n!), Ω(n·n!) e Θ(n·n!)</b>. A memória auxiliar, incluindo a pilha recursiva, é O(n)."),
               p("No backtracking, defina A(n,P) como o número de posições candidatas efetivamente examinadas para a entrada parcial P. Cada tentativa usa O(1), mais a validação inicial Θ(n), logo o custo específico da entrada é <b>Θ(n + A(n,P))</b>. Isso dá O(n·n!) no pior limite combinatório e Ω(n) pelo processamento da entrada. A expressão Θ(n + A(n,P)) é o limite apertado; chamar Θ(n!) para toda entrada seria incorreto, pois a poda varia com P. A memória auxiliar, inclusive pilha, é O(n)."),
-              heading("3. Melhor caso, pior caso e caso médio"),
-              p("No cenário sem rainhas fixas, A visita exatamente n! folhas para todo n, portanto seu custo praticamente independe de haver poucas ou muitas soluções. B tenta menos posições quando conflitos diagonais surgem cedo. Uma solução completamente fixada é o caso favorável para ambos: apenas uma configuração é verificada, com custo Θ(n). O tabuleiro vazio amplia a busca e é o caso adverso observado no conjunto medido. Cinco entradas parciais aleatórias por tamanho formam o cenário médio amostral. Essa média não representa todas as configurações possíveis."),
-              PageBreak()]
+              KeepTogether([
+                  heading("3. Melhor caso, pior caso e caso médio"),
+                  p("No cenário sem rainhas fixas, A visita exatamente n! folhas para todo n, portanto seu custo praticamente independe de haver poucas ou muitas soluções. Em B, fixar uma rainha restringe as escolhas daquela linha: a árvore de busca parcial é um subconjunto da árvore do tabuleiro vazio. Assim, no conjunto de entradas com mesmo n e rainhas pré-posicionadas, o tabuleiro vazio maximiza as tentativas; conflitos fixos inválidos encerram a busca após a validação. Uma solução completamente fixada é o caso favorável para ambos, com custo Θ(n). Cinco entradas parciais aleatórias por tamanho formam o cenário médio amostral. Essa média não representa todas as configurações possíveis.")])]
 
     story += [heading("4. Aplicabilidade prática"),
               p("Força bruta é simples, serve como referência independente de corretude e funciona para n pequeno ou para tabuleiros quase completos. Seu crescimento fatorial inviabiliza n maior. Backtracking é preferível para enumerar ou contar soluções em tamanhos moderados, porque evita expandir configurações já impossíveis. Para apenas decidir se o tabuleiro vazio tem solução, os dois métodos são desnecessários: há uma solução para n=1 e para todo n≥4; n=2 e n=3 não têm solução [1]. Para instâncias parciais grandes, técnicas de propagação de restrições e SAT podem ser mais adequadas."),
               heading("5. Simulação e metodologia experimental"),
               p("O script de geração usa semente 20261116. Para cada n=4,5,6,7,8,9 há um tabuleiro vazio, cinco tabuleiros parciais com duas rainhas não atacantes sorteadas sem condicionar à existência de solução e um tabuleiro completamente preenchido; acrescentou-se n=4 com primeira rainha na coluna 0, impossível de completar. São 43 entradas. O incremento de uma unidade em n multiplica o espaço de permutações por n; por isso seis tamanhos pequenos já cobrem um crescimento maior que geométrico de trabalho, sem impor execuções inviáveis."),
-              p("Cada combinação de linguagem e algoritmo usa o mesmo arquivo de entrada. O processo lê o arquivo antes do cronômetro; cada execução temporizada inclui somente a função do algoritmo. Há três aquecimentos e 15 execuções medidas por entrada. As médias, desvios padrão, medianas e medidas brutas são salvos em CSV. A compilação C++ usa g++ 15.2.0 com -O2 -std=c++17; Python 3.13.9. Ambiente: Intel Core i7-1355U (10 núcleos, 12 threads), 23,6 GiB de RAM e Windows 11 Home Single Language 10.0.26300."),
+              p("Cada combinação de linguagem e algoritmo usa o mesmo arquivo de entrada. O processo lê o arquivo antes do cronômetro; cada execução temporizada inclui somente a função do algoritmo. Há " + str(ENVIRONMENT["warmup"]) + " aquecimentos e " + str(ENVIRONMENT["repetitions"]) + " execuções medidas por entrada. As médias, desvios padrão, medianas e medidas brutas são salvos em CSV. Compilação: " + ENVIRONMENT["compiler"] + " com " + ENVIRONMENT["flags"] + "; Python " + ENVIRONMENT["python"].split()[0] + "; sistema " + ENVIRONMENT["platform"] + "; CPU " + ENVIRONMENT["cpu_name"] + "; RAM física " + number(float(ENVIRONMENT["ram_bytes"]) / 2**30, 1) + " GiB. Os tempos dependem deste ambiente e da carga do sistema."),
               p("Para o bônus de memória, uma rodada separada usa n=6,12,24,48,96,192, sempre com seis linhas livres e as demais rainhas fixas em uma solução válida. Assim as quatro versões recebem exatamente a mesma entrada, mas o fatorial das linhas livres permanece viável. São 15 processos independentes por combinação. Em Python, tracemalloc mede o pico de alocações rastreadas durante a chamada; em C++, um contador de operator new mede o pico de bytes dinamicamente alocados pelas mesmas funções. Leitura, inicialização do processo e escrita da saída ficam fora da medição. As medidas não são memória residente total e não devem ser comparadas diretamente entre linguagens."),
-              p("A corretude foi verificada pelas quatro implementações nas 43 entradas, por contagens conhecidas dos tabuleiros vazios e por testes automatizados de casos de borda. Todos os programas retornaram os mesmos resultados. Tempos muito curtos, sobretudo em C++ com n pequeno ou tabuleiro completo, sofrem maior ruído de relógio e escalonamento; as conclusões de desempenho se apoiam sobretudo em n≥7."),
+              p("A corretude foi verificada pelas quatro implementações nas " + str(len({r["instance"] for r in SUMMARY})) + " entradas, por contagens conhecidas dos tabuleiros vazios e por testes automatizados de casos de borda. Todos os programas retornaram os mesmos resultados. Tempos muito curtos, sobretudo em C++ com n pequeno ou tabuleiro completo, sofrem maior ruído de relógio e escalonamento; as conclusões de desempenho se apoiam sobretudo em n≥7."),
+              PageBreak(),
               heading("6. Gráficos e tabelas comparativas"),
               p("A tabela apresenta média ± desvio padrão em milissegundos, com 15 repetições por célula, para entradas vazias. A coluna de soluções confirma a saída comum."),
               table([["n", "Soluções", "A / Python", "B / Python", "A / C++", "B / C++"]] + [
                   [str(n), DATA[(f"empty_n{n}", "Python", "brute")]["solutions"]] + [
-                      number(ms(f"empty_n{n}", lang, alg), 3) + " ± " +
-                      number(float(DATA[(f"empty_n{n}", lang, alg)]["sd_ms"]), 3)
+                      mean_sd(DATA[(f"empty_n{n}", lang, alg)])
                       for lang, alg in (("Python", "brute"), ("Python", "backtracking"),
                                         ("C++", "brute"), ("C++", "backtracking"))]
                   for n in SIZES], [1.15*cm, 1.65*cm, 3.25*cm, 3.25*cm, 3.25*cm, 3.25*cm]),
@@ -275,33 +283,35 @@ def make_report() -> None:
                 + " vezes mais rápido que Python. Esses fatores são observações deste equipamento e desta implementação, não propriedades assintóticas das linguagens."),
               *figure("razao_teorica.png", "Figura 2. T(n)/(n!·n) da força bruta: aproxima uma constante no intervalo maior, coerente com Θ(n!·n)."),
               *figure("operacoes.png", "Figura 3. Busca: a força bruta visita n! folhas; B registra tentativas de posições. As contagens têm unidades distintas e ilustram a poda."),
-              heading("6. Efeito das entradas forçadas"),
-              *figure("casos_n9.png", "Figura 4. Para n=9, o tabuleiro vazio exige mais busca; a barra parcial é a média de cinco entradas; o completo exige validação curta."),
-              p("O caso vazio de n=9 tem 352 soluções; o completo tem 1. As cinco entradas parciais sorteadas têm, respectivamente, 8, 12, 7, 4 e 3 soluções. Há entradas parciais insolúveis, como n=4 com rainha fixa em (0,0); as quatro implementações concordaram. Para instâncias completas, o valor minúsculo de tempo em C++ torna razões de desempenho pouco informativas."),
+              KeepTogether([
+                  heading("6. Efeito das entradas forçadas"),
+                  *figure("casos_n9.png", "Figura 4. Para n=9, o tabuleiro vazio exige mais busca; a barra parcial é a média de cinco entradas; o completo exige validação curta.")]),
+              p("O caso vazio de n=9 tem " + DATA[("empty_n9", "Python", "brute")]["solutions"] + " soluções; o completo tem " + DATA[("complete_n9", "Python", "brute")]["solutions"] + ". As cinco entradas parciais sorteadas têm, respectivamente, " + ", ".join(DATA[(name, "Python", "brute")]["solutions"] for name in ["partial_n9"] + [f"partial_n9_{i}" for i in range(2, 6)]) + " soluções. Há entradas parciais insolúveis, como n=4 com rainha fixa em (0,0); as quatro implementações concordaram. Para instâncias completas, o valor minúsculo de tempo em C++ torna razões de desempenho pouco informativas."),
               PageBreak(),
               heading("6. Escala geométrica complementar"),
-              p("A série controlada dobra n de 6 a 192 mantendo m=6 linhas livres; as demais rainhas vêm de uma solução válida. Cada implementação recebeu as mesmas seis entradas, com três aquecimentos e 15 repetições, totalizando 360 tempos medidos. Manter m fixo torna a força bruta viável e isola o efeito de n, sem representar o pior caso do tabuleiro vazio. O modelo teórico de A passa a Θ(n·6!)=Θ(n); em B, as posições tentadas ainda dependem das rainhas fixas."),
+              p("A série controlada dobra n de 6 a 192 mantendo m=6 linhas livres; as demais rainhas vêm de uma solução válida. Cada implementação recebeu as mesmas seis entradas, com " + str(GEOMETRIC_ENVIRONMENT["warmup"]) + " aquecimentos e " + str(GEOMETRIC_ENVIRONMENT["repetitions"]) + " repetições, totalizando " + str(len(GEOMETRIC_SUMMARY) * int(GEOMETRIC_ENVIRONMENT["repetitions"])) + " tempos medidos. Manter m fixo torna a força bruta viável e isola o efeito de n, sem representar o pior caso do tabuleiro vazio. O modelo teórico de A passa a Θ(n·6!)=Θ(n); em B, as posições tentadas ainda dependem das rainhas fixas."),
               p("Uma sondagem separada, com uma execução por tamanho, registrou o limite de 60 s do tabuleiro vazio na combinação limitante, força bruta em Python: n=10 levou "
                 + number(float(LIMIT["observations"][0]["algorithm_seconds"]), 2)
                 + " s para 3.628.800 folhas; n=11 excedeu 60 s. Essa sondagem não integra as médias de 15 repetições."),
               table([["n", "A / Python", "B / Python", "A / C++", "B / C++"]] + [
-                  [str(size)] + [number(float(GEOMETRIC[(str(size), lang, alg)]["mean_ms"]), 3)
+                  [str(size)] + [mean_sd(GEOMETRIC[(str(size), lang, alg)])
                                  for lang, alg in (("Python", "brute"), ("Python", "backtracking"),
                                                    ("C++", "brute"), ("C++", "backtracking"))]
                   for size in MEMORY_SIZES], [1.4*cm, 3.75*cm, 3.75*cm, 3.75*cm, 3.75*cm]),
-              p("Tabela: tempo médio em ms para as entradas geométricas, 15 repetições por célula.", "CaptionCustom"),
+              p("Tabela: média ± desvio padrão em ms para as entradas geométricas, 15 repetições por célula.", "CaptionCustom"),
               *figure("tempos_geometricos.png", "Figura 5. Tempos médios nas mesmas entradas de tamanho geométrico; seis linhas livres em cada tabuleiro."),
               PageBreak(),
               heading("6. Bônus: uso de memória"),
-              p("A tabela mostra o pico médio de alocações dinâmicas, em KiB, de 15 execuções por célula. O desvio padrão foi zero para as 24 combinações, pois as entradas e os padrões de alocação são determinísticos."),
+              p("A tabela mostra média ± desvio padrão do pico de alocações dinâmicas, em KiB, de 15 execuções por célula. A métrica não inclui toda a pilha recursiva."),
               table([["n", "A / Python", "B / Python", "A / C++", "B / C++"]] + [
                   [str(size)] + [number(float(MEMORY[(str(size), lang, alg)]["mean_peak_bytes"]) / 1024, 2)
+                                 + " ± " + number(float(MEMORY[(str(size), lang, alg)]["sd_peak_bytes"]) / 1024, 2)
                                  for lang, alg in (("Python", "brute"), ("Python", "backtracking"),
                                                    ("C++", "brute"), ("C++", "backtracking"))]
                   for size in MEMORY_SIZES], [1.4*cm, 3.75*cm, 3.75*cm, 3.75*cm, 3.75*cm]),
               Spacer(1, 7),
               *figure("memoria_alocacoes.png", "Figura 6. Pico de alocações dinâmicas nas entradas de memória. Os painéis têm escalas próprias; compare tendências dentro de cada linguagem."),
-              p("De n=6 a 192 (32 vezes maior), o pico medido passa de 3,09 para 32,02 KiB em Python/A e de 0,18 para 2,00 KiB em C++/A. O crescimento é compatível com estruturas auxiliares O(n): tabuleiro, vetores de ocupação e conjuntos de diagonais crescem com n. Saltos e patamares em Python refletem a capacidade interna de listas e conjuntos. A pilha recursiva não é coberta integralmente por esses contadores: nas entradas medidas, a profundidade máxima atingida é 7 chamadas em A (seis linhas livres) e n+1 em B. Para o problema geral, ambas as pilhas têm limite O(n). Os dados apoiam, mas não provam, a análise assintótica."),
+              p("De n=6 a 192 (32 vezes maior), o pico medido passa de " + number(float(MEMORY[("6", "Python", "brute")]["mean_peak_bytes"]) / 1024, 2) + " para " + number(float(MEMORY[("192", "Python", "brute")]["mean_peak_bytes"]) / 1024, 2) + " KiB em Python/A e de " + number(float(MEMORY[("6", "C++", "brute")]["mean_peak_bytes"]) / 1024, 2) + " para " + number(float(MEMORY[("192", "C++", "brute")]["mean_peak_bytes"]) / 1024, 2) + " KiB em C++/A. O crescimento é compatível com estruturas auxiliares O(n): tabuleiro, vetores de ocupação e conjuntos de diagonais crescem com n. Saltos e patamares em Python refletem a capacidade interna de listas e conjuntos. A pilha recursiva não é coberta integralmente por esses contadores: nas entradas medidas, a profundidade máxima atingida é 7 chamadas em A (seis linhas livres) e n+1 em B. Para o problema geral, ambas as pilhas têm limite O(n). Os dados apoiam, mas não provam, a análise assintótica."),
               PageBreak(),
               heading("7. Reflexão sobre P e NP"),
               p("É essencial definir a pergunta. A <b>decisão do N-rainhas vazio</b> - existe uma solução? - está em P: basta verificar n, pois há solução para n=1 e n≥4 e não há para n=2 ou 3 [1]. Nosso experimento, por escolha metodológica, <b>conta todas as soluções</b>, uma tarefa diferente e muito mais cara que decidir existência. Portanto, o crescimento medido não demonstra que a decisão esteja fora de P."),
@@ -311,13 +321,13 @@ def make_report() -> None:
               p("[1] GENT, Ian P.; JEFFERSON, Christopher; NIGHTINGALE, Peter. Complexity of n-Queens Completion. <i>Journal of Artificial Intelligence Research</i>, v. 59, p. 815-848, 2017. "
                 + PAPER_URL, "SmallCustom"),
               heading("Ambiente, reprodutibilidade e responsabilidades"),
-              p("O código-fonte, o gerador, a medição, os testes e os gráficos estão no repositório " + REPO_URL + ". O README contém os comandos de reprodução. Arquivos de entrada e CSVs medidos acompanham o projeto."),
-              p("<b>Contribuições informadas pela equipe:</b> Bruno Augusto - força bruta e justificativa assintótica; Gustavo Torres Castro - metodologia experimental, CSVs e gráficos; Diego Magnata - backtracking, testes e apresentação; Pablo Coelho - texto final, referências e apresentação. Todos os integrantes participam da revisão e devem conseguir explicar o código e a análise."),
+              p("O código-fonte, os geradores, a medição, os testes e os CSVs estão no checkout local do projeto. Os gráficos e PDFs gerados acompanham o pacote de entrega; o README contém os comandos de reprodução. Esta revisão não alterou o repositório remoto " + REPO_URL + "."),
+              p("<b>Contribuições informadas no material anterior:</b> Bruno Augusto - força bruta e justificativa assintótica; Gustavo Torres Castro - metodologia experimental, CSVs e gráficos; Diego Magnata - backtracking, testes e apresentação; Pablo Coelho - texto final, referências e apresentação. Estas atribuições não foram verificadas nesta auditoria. Recomenda-se que todos revisem o código e a análise antes da apresentação."),
               heading("Declaração de uso de IA"),
               p("Durante o desenvolvimento, utilizamos o <b>ChatGPT (OpenAI Codex)</b> como ferramenta de IA generativa no estudo teórico, na implementação e revisão do código, na preparação dos experimentos, na análise dos resultados e na organização do relatório e da apresentação."),
               p("A IA foi utilizada diretamente para implementar e ajustar os algoritmos em Python e C++, os scripts de geração de entradas, medição de tempo e memória, testes e gráficos. Também ajudou a entender o funcionamento de cada implementação, discutir escolhas do código, identificar possíveis erros e esclarecer as classificações de complexidade. Na etapa experimental, apoiou a compreensão das métricas, a interpretação dos gráficos e a discussão das diferenças entre Python e C++."),
-              p("<b>Exemplos de consultas:</b> diferenças entre força bruta e backtracking; justificativa de O, Ω e Θ; cuidados ao comparar Python e C++; interpretação de gráficos log-log; distinção entre N-rainhas vazio e completamento; organização de uma apresentação de até sete minutos."),
-              p("<b>Validação e responsabilidade:</b> As respostas e o código produzidos com auxílio da ferramenta foram analisados pela equipe. Os integrantes são responsáveis por compreender as implementações, verificar os testes e resultados apresentados e explicar as conclusões do trabalho."),
+              p("<b>Exemplos de consultas:</b> diferenças entre força bruta e backtracking; justificativa de O, Ω e Θ; cuidados ao comparar Python e C++; interpretação de gráficos log-log; distinção entre N-rainhas vazio e completamento; organização da apresentação."),
+              p("<b>Validação e responsabilidade:</b> O código e os resultados foram auditados tecnicamente nesta revisão. Os integrantes são responsáveis por compreender as implementações, revisar os materiais e explicar as conclusões do trabalho."),
               Spacer(1, 12),
               p("Fim do relatório.", "CaptionCustom")]
     doc.build(story)
@@ -352,50 +362,101 @@ def make_slides() -> None:
     path = PRES / "apresentacao_n_rainhas.pdf"
     c = canvas.Canvas(str(path), pagesize=landscape(A4))
     w, h = landscape(A4)
-    slide_title(c, "N-rainhas: duas buscas, duas linguagens", "Teoria da Computação | Bruno, Gustavo, Diego e Pablo")
-    slide_bullets(c, ["Força bruta por permutações x backtracking com poda", "Python e C++ sobre as mesmas entradas", "15 medições por entrada e por implementação"], h-150)
+    slide_title(c, "N-rainhas: contar soluções", "Teoria da Computação | apresentação de Diego e Pablo | 8 a 10 minutos")
+    slide_bullets(c, ["Uma rainha por linha e coluna, sem ataques diagonais", "Força bruta e backtracking em Python e C++", "Pergunta: quanto a poda reduz a busca e o tempo?"], h-180)
     c.showPage()
-    slide_title(c, "O problema e os algoritmos")
-    slide_bullets(c, ["Contar tabuleiros com n rainhas sem ataques", "A: gera todas as permutações; verifica diagonais no fim", "B: corta o ramo ao detectar conflito de coluna/diagonal", "Rainhas pré-fixadas definem a variante de completamento"], h-145)
+    slide_title(c, "O problema em um tabuleiro 4 x 4", "Uma solução: colunas [1, 3, 0, 2], de cima para baixo")
+    board = [1, 3, 0, 2]
+    cell = 63
+    for row in range(4):
+        for col in range(4):
+            x, y = 62 + col * cell, 170 + (3 - row) * cell
+            c.setFillColor(colors.HexColor("#e7f0f2" if (row + col) % 2 == 0 else "#98bec7"))
+            c.rect(x, y, cell, cell, fill=1, stroke=0)
+            if board[row] == col:
+                c.setFillColor(colors.HexColor("#123945"))
+                c.setFont("Arial-Bold", 36)
+                c.drawCentredString(x + cell / 2, y + 15, "Q")
+    c.setFont("Arial", 15)
+    c.setFillColor(colors.HexColor("#263d44"))
+    for y, line in zip((405, 355, 305, 255),
+                       ("Uma coluna distinta em cada linha", "Diferenças linha-coluna distintas",
+                        "Somas linha+coluna distintas", "Entrada parcial: algumas rainhas fixas")):
+        c.drawString(370, y, line)
     c.showPage()
-    slide_title(c, "Complexidade teórica")
-    slide_bullets(c, ["A: Θ(n·n!) no tabuleiro vazio", "B: Θ(n + tentativas examinadas); limite O(n·n!)", "B reduz a busca na prática, sem mudar o pior limite provado", "Espaço auxiliar O(n) nas duas versões"], h-145)
+    slide_title(c, "Duas formas de percorrer as escolhas")
+    c.setFont("Arial-Bold", 18)
+    c.setFillColor(colors.HexColor("#bb3e03"))
+    c.drawString(50, 430, "A. Força bruta")
+    c.setFillColor(colors.HexColor("#005f73"))
+    c.drawString(425, 430, "B. Backtracking")
+    c.setFont("Arial", 15)
+    c.setFillColor(colors.HexColor("#263d44"))
+    for y, line in zip((370, 327, 284, 241),
+                       ("Distribui colunas sem repetir", "Gera todas as m! permutações", "Confere diagonais só na folha", "Conta as configurações válidas")):
+        c.drawString(55, y, line)
+    for y, line in zip((370, 327, 284, 241),
+                       ("Testa coluna e diagonais", "Conflito: corta o ramo", "Sem conflito: avança uma linha", "Desfaz a escolha ao retornar")):
+        c.drawString(430, y, line)
+    c.setStrokeColor(colors.HexColor("#b7cdd2"))
+    c.line(405, 210, 405, 440)
+    c.setFont("Arial-Bold", 14)
+    c.setFillColor(colors.HexColor("#123945"))
+    c.drawString(55, 170, "n=4: A examina 24 folhas")
+    c.setFont("Arial", 12)
+    c.drawString(55, 135, "Mesmo as inválidas chegam ao teste final.")
+    c.drawString(470, 180, "B: rainha na linha 0, coluna 1")
+    c.setStrokeColor(colors.HexColor("#98bec7"))
+    for x in (470, 550, 630, 710):
+        c.line(620, 160, x, 112)
+    c.setFont("Arial-Bold", 12)
+    for x, label in zip((458, 538, 618, 698), ("0 ×", "1 ×", "2 ×", "3 ok")):
+        c.drawString(x, 91, label)
+    c.setFont("Arial", 11)
+    c.drawString(470, 60, "Três ramos cortados; apenas um avança.")
     c.showPage()
-    slide_title(c, "Experimento reproduzível")
-    slide_bullets(c, ["n=4 a 9; vazio, 5 parciais aleatórias e completo", "Mesmos 43 arquivos; semente 20261116", "3 aquecimentos + 15 medições; apenas o algoritmo cronometrado", "Quatro respostas concordaram em todas as entradas"], h-145)
+    slide_title(c, "O custo da busca", "n é o tamanho; m é o número de linhas livres; A é o número de tentativas no backtracking")
+    slide_bullets(c, ["Força bruta: Θ(n · m!) em entradas válidas", "Tabuleiro vazio: O, Ω e Θ(n · n!)", "Backtracking: Θ(n + A); limite superior O(n · n!)", "Memória auxiliar: O(n) nas duas implementações", "Melhor entrada completa: Θ(n); médio depende da amostra"], h-150)
     c.showPage()
-    slide_title(c, "Tempo medido - escala log-log")
+    slide_title(c, "Como medimos", "As quatro variantes recebem os mesmos arquivos")
+    slide_bullets(c, ["43 entradas: n=4 a 9, vazias, parciais e completas", "Semente fixa 20261116 para as parciais", "3 aquecimentos e 15 tempos por combinação", "Leitura e impressão fora do cronômetro", "CSV bruto, média, desvio padrão e mediana auditados"], h-150)
+    c.showPage()
+    slide_title(c, "Tabuleiro vazio: crescimento fatorial", "Média em ms; a tabela do relatório apresenta os desvios padrão")
     c.drawImage(str(FIG / "tempos_loglog.png"), 52, 30, width=w-104, height=h-135, preserveAspectRatio=True, anchor="c")
     c.showPage()
-    slide_title(c, "Resultado em n=9")
-    slide_bullets(c, [f"Python: poda {number(ms('empty_n9','Python','brute')/ms('empty_n9','Python','backtracking'),1)}x mais rápida",
-                      f"C++: poda {number(ms('empty_n9','C++','brute')/ms('empty_n9','C++','backtracking'),1)}x mais rápida",
-                      "352 soluções; 362.880 permutações completas em A", "72.378 tentativas de posição em B"], h-145)
-    c.showPage()
-    slide_title(c, "Bônus: memória auxiliar")
-    c.drawImage(str(FIG / "memoria_alocacoes.png"), 52, 30, width=w-104, height=h-135,
+    slide_title(c, "Seis linhas livres: outra série", "n dobra de 6 a 192, mas m=6 permanece fixo; não representa o tabuleiro vazio")
+    c.drawImage(str(FIG / "tempos_geometricos.png"), 52, 30, width=w-104, height=h-135,
                 preserveAspectRatio=True, anchor="c")
     c.showPage()
-    slide_title(c, "P, NP e o problema vizinho")
-    slide_bullets(c, ["Decidir N-rainhas vazio está em P", "Contar soluções é outra tarefa", "Completar tabuleiro parcial é NP-completo", "Pré-posições codificam restrições arbitrárias"], h-145)
+    slide_title(c, "O que aconteceu em n=9 vazio", "Tempo em ms: média ± desvio padrão, 15 execuções")
+    slide_bullets(c, ["Python A: " + mean_sd(DATA[("empty_n9", "Python", "brute")]) + "    B: " + mean_sd(DATA[("empty_n9", "Python", "backtracking")]),
+                      "C++ A: " + mean_sd(DATA[("empty_n9", "C++", "brute")]) + "    B: " + mean_sd(DATA[("empty_n9", "C++", "backtracking")]),
+                      DATA[("empty_n9", "Python", "brute")]["solutions"] + " soluções; " + DATA[("empty_n9", "Python", "brute")]["operations"] + " folhas em A",
+                      DATA[("empty_n9", "Python", "backtracking")]["operations"] + " tentativas de posição em B",
+                      "As unidades dessas duas contagens são diferentes"], h-155)
+    c.showPage()
+    slide_title(c, "Conclusão e P × NP")
+    slide_bullets(c, ["A poda reduziu a busca nas entradas medidas", "Tempos observados não provam um limite assintótico", "Decidir N-rainhas vazio está em P", "Completar um tabuleiro parcial é NP-completo", "Contar seus completamentos é #P-completo"], h-150)
     c.setFont("Arial", 8)
-    c.drawString(48, 28, "Gent, Jefferson e Nightingale, JAIR 59 (2017).")
+    c.drawString(48, 28, "Fonte teórica: Gent, Jefferson e Nightingale, JAIR 59 (2017), doi:10.1613/jair.5512.")
     c.showPage()
     c.save()
-    notes = PRES / "roteiro_7_minutos.md"
-    notes.write_text("""# Roteiro de apresentação (até 7 minutos)
+    notes = PRES / "roteiro_8_a_10_minutos.md"
+    notes.write_text("""# Roteiro de apresentação (8 a 10 minutos)
 
-1. **0:00-0:40 - Bruno:** problema, equipe e pergunta experimental.
-2. **0:40-1:40 - Bruno:** permutações e backtracking; conferir compreensão das quatro versões.
-3. **1:40-2:35 - Diego:** limites assintóticos e por que a poda ajuda.
-4. **2:35-3:25 - Gustavo:** entradas, semente, repetição, temporização e testes.
-5. **3:25-4:25 - Gustavo:** gráfico log-log e comparação entre algoritmos e linguagens.
-6. **4:25-5:10 - Diego:** números de n=9 e limites de medição.
-7. **5:10-5:45 - Gustavo:** bônus de memória e ressalva sobre pilha e runtime.
-8. **5:45-6:40 - Pablo:** P, NP e completamento NP-completo; fonte Gent et al. (2017).
-9. **6:40-7:00 - Todos:** conclusão e transição para perguntas.
+Distribuição sugerida de falas, sujeita à revisão de Diego e Pablo. Os números dos slides são gerados dos CSVs medidos.
 
-As falas são uma distribuição proposta. Cada integrante deve revisar e conseguir explicar qualquer trecho do código e da análise antes da apresentação.
+1. **0:00–0:40, Diego, slide 1:** apresente a pergunta experimental: comparar busca exaustiva e poda nas mesmas entradas.
+2. **0:40–1:35, Diego, slide 2:** mostre uma solução 4 x 4. Explique colunas e diagonais; indique que uma entrada pode fixar rainhas.
+3. **1:35–2:40, Diego, slide 3:** em A, todas as permutações chegam à verificação final. Em B, um conflito impede a expansão do ramo. Explique o desfazer da escolha.
+4. **2:40–3:35, Diego, slide 4:** defina m e A. Diferencie o limite apertado de A, a expressão dependente da entrada para B e o espaço O(n).
+5. **3:35–4:25, Pablo, slide 5:** descreva as 43 entradas, a semente, os 3 aquecimentos, as 15 medições e o escopo do cronômetro.
+6. **4:25–5:35, Pablo, slide 6:** leia o gráfico logarítmico. A série vazia revela o crescimento fatorial; compare métodos e linguagens sem extrapolar além dos n medidos.
+7. **5:35–6:25, Pablo, slide 7:** mostre que manter seis linhas livres muda a pergunta experimental. O crescimento em n aqui não substitui o caso vazio.
+8. **6:25–7:35, Pablo, slide 8:** use média ± desvio padrão e as contagens de n=9. As unidades de folhas e tentativas diferem; tempos muito curtos têm mais ruído relativo.
+9. **7:35–8:50, Diego e Pablo, slide 9:** Pablo conclui a comparação; Diego explica P, NP e #P. Reservem até 1 minuto para perguntas ou variação de ritmo.
+
+O bônus de memória está no relatório e pode entrar nas perguntas. A declaração de uso de IA permanece no relatório. Cada apresentador deve revisar as quatro implementações e os dados antes da fala.
 """, encoding="utf-8")
     print(f"Apresentação: {path}")
 
